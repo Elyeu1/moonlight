@@ -25,6 +25,29 @@
 #import <AVKit/UIWindow.h>
 #endif
 
+// Treat the complete streaming UI as a single fullscreen video surface for
+// pointer appearance. StreamView also hides the pointer over the decoded video,
+// but that region doesn't include letterboxing or controller-owned overlays.
+#if !TARGET_OS_TV
+@interface FullscreenStreamPointerHider : NSObject <UIPointerInteractionDelegate>
+@end
+
+@implementation FullscreenStreamPointerHider
+
+- (UIPointerRegion *)pointerInteraction:(UIPointerInteraction *)interaction
+                       regionForRequest:(UIPointerRegionRequest *)request
+                          defaultRegion:(UIPointerRegion *)defaultRegion API_AVAILABLE(ios(13.4)) {
+    return [UIPointerRegion regionWithRect:interaction.view.bounds identifier:@"MoonlightFullscreenStream"];
+}
+
+- (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction
+                        styleForRegion:(UIPointerRegion *)region API_AVAILABLE(ios(13.4)) {
+    return [UIPointerStyle hiddenPointerStyle];
+}
+
+@end
+#endif
+
 
 // ---- External Display Manager ----
 @interface ExternalDisplayManager : NSObject
@@ -272,6 +295,10 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
     UILabel *_tipLabel;
     UIActivityIndicatorView *_spinner;
     StreamView *_streamView;
+#if !TARGET_OS_TV
+    FullscreenStreamPointerHider *_fullscreenPointerHider;
+    UIPointerInteraction *_fullscreenPointerInteraction;
+#endif
     UIScrollView *_scrollView;
     BOOL _userIsInteracting;
     CGSize _keyboardSize;
@@ -284,6 +311,9 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
 
 - (void)mousePresenceChanged {
 #if !TARGET_OS_TV
+    if (@available(iOS 13.4, *)) {
+        [_fullscreenPointerInteraction invalidate];
+    }
     if (@available(iOS 14.0, *)) {
         [self setNeedsUpdateOfPrefersPointerLocked];
         // Force immediate update
@@ -311,6 +341,14 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
 {
 
     [super viewDidLoad];
+
+#if !TARGET_OS_TV
+    if (@available(iOS 13.4, *)) {
+        _fullscreenPointerHider = [FullscreenStreamPointerHider new];
+        _fullscreenPointerInteraction = [[UIPointerInteraction alloc] initWithDelegate:_fullscreenPointerHider];
+        [self.view addInteraction:_fullscreenPointerInteraction];
+    }
+#endif
     
     [self.navigationController setNavigationBarHidden:YES animated:YES];
     
@@ -464,11 +502,13 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
         [self.view.window makeKeyAndVisible];
         [self->_streamView becomeFirstResponder];
         [self setNeedsUpdateOfPrefersPointerLocked];
+        [self->_fullscreenPointerInteraction invalidate];
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self.view.window makeKeyAndVisible];
             [self->_streamView becomeFirstResponder];
             [self setNeedsUpdateOfPrefersPointerLocked];
+            [self->_fullscreenPointerInteraction invalidate];
         });
     }
 #endif
