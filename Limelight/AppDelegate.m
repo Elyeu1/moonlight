@@ -24,6 +24,11 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
 #if !TARGET_OS_TV
+    NSURL *launchURL = [launchOptions objectForKey:UIApplicationLaunchOptionsURLKey];
+    if (launchURL != nil && [launchURL.scheme caseInsensitiveCompare:@"moonlightplus"] == NSOrderedSame) {
+        Log(LOG_I, @"Launched through Moonlight Plus URL: %@", launchURL.absoluteString);
+    }
+
     UIApplicationShortcutItem* shortcut = [launchOptions valueForKey:UIApplicationLaunchOptionsShortcutItemKey];
     if (shortcut != nil) {
         _pcUuidToLoad = (NSString*)[shortcut.userInfo objectForKey:@"UUID"];
@@ -33,6 +38,17 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 }
 
 #if !TARGET_OS_TV
+- (BOOL)application:(UIApplication *)application
+            openURL:(NSURL *)url
+            options:(NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options {
+    if ([url.scheme caseInsensitiveCompare:@"moonlightplus"] != NSOrderedSame) {
+        return NO;
+    }
+
+    Log(LOG_I, @"Opened through Moonlight Plus URL: %@", url.absoluteString);
+    return YES;
+}
+
 - (void)application:(UIApplication *)application performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completionHandler:(void (^)(BOOL succeeded))completionHandler {
     _pcUuidToLoad = (NSString*)[shortcutItem.userInfo objectForKey:@"UUID"];
     _shortcutCompletionHandler = completionHandler;
