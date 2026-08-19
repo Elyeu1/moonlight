@@ -664,13 +664,6 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 - (UIPointerRegion *)pointerInteraction:(UIPointerInteraction *)interaction
                        regionForRequest:(UIPointerRegionRequest *)request
                           defaultRegion:(UIPointerRegion *)defaultRegion API_AVAILABLE(ios(13.4)) {
-    if (@available(iOS 14.0, *)) {
-        if ([GCMouse current] != nil) {
-            // We'll handle this with GCMouse. Do nothing here.
-            return nil;
-        }
-    }
-    
     // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect
     CGSize videoSize;
     CGPoint videoOrigin;
@@ -684,7 +677,14 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     
     // Move the cursor on the host if no buttons are pressed.
     // Motion with buttons pressed in handled in touchesMoved:
-    if (lastMouseButtonMask == 0) {
+    // GCMouse devices use ControllerSupport's relative-motion callback. Still
+    // return a hidden UIKit pointer region below, but don't also send absolute
+    // motion from UIPointerInteraction or the remote cursor will move twice.
+    BOOL usesGameControllerMouse = NO;
+    if (@available(iOS 14.0, *)) {
+        usesGameControllerMouse = [GCMouse current] != nil;
+    }
+    if (!usesGameControllerMouse && lastMouseButtonMask == 0) {
         [self updateCursorLocation:request.location isMouse:YES];
     }
     
