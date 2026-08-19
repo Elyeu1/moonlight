@@ -17,6 +17,11 @@
 
 static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 
+static BOOL UseStandaloneIPhoneAbsoluteMouse(void) {
+    return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone &&
+           UIScreen.screens.count == 1;
+}
+
 @implementation StreamView {
     OnScreenControls* onScreenControls;
     
@@ -517,7 +522,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         UITouch *touch = [touches anyObject];
         if (touch.type == UITouchTypeIndirectPointer) {
             if (@available(iOS 14.0, *)) {
-                if ([GCMouse current] != nil) {
+                if ([GCMouse current] != nil && !UseStandaloneIPhoneAbsoluteMouse()) {
                     // We'll handle this with GCMouse. Do nothing here.
                     return;
                 }
@@ -639,7 +644,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // Check smoothing setting
     BOOL disableSmoothing = [[NSUserDefaults standardUserDefaults] boolForKey:@"disableMouseSmoothing"];
     
-    if (disableSmoothing) {
+    if (disableSmoothing && !UseStandaloneIPhoneAbsoluteMouse()) {
         // Raw delta — no smoothing
         if (lastMouseX != 0 || lastMouseY != 0) {
             short deltaX = (short)(normalizedLocation.x - lastMouseX);
@@ -682,7 +687,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // motion from UIPointerInteraction or the remote cursor will move twice.
     BOOL usesGameControllerMouse = NO;
     if (@available(iOS 14.0, *)) {
-        usesGameControllerMouse = [GCMouse current] != nil;
+        usesGameControllerMouse = [GCMouse current] != nil && !UseStandaloneIPhoneAbsoluteMouse();
     }
     if (!usesGameControllerMouse && lastMouseButtonMask == 0) {
         [self updateCursorLocation:request.location isMouse:YES];

@@ -848,6 +848,15 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
 
 -(void) registerMouseCallbacks:(GCMouse*) mouse API_AVAILABLE(ios(14.0)) {
     mouse.mouseInput.mouseMovedHandler = ^(GCMouseInput * _Nonnull mouse, float deltaX, float deltaY) {
+        // On a standalone iPhone, AssistiveTouch owns the visible system cursor.
+        // StreamView sends that cursor's absolute position so the host cursor
+        // stays directly underneath it. Keep button handling here, but suppress
+        // the simultaneous relative movement that makes the two cursors diverge.
+        if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone &&
+            UIScreen.screens.count == 1) {
+            return;
+        }
+
         self->accumulatedDeltaX += deltaX / MOUSE_SPEED_DIVISOR;
         self->accumulatedDeltaY += -deltaY / MOUSE_SPEED_DIVISOR;
         
