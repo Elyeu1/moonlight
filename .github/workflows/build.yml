@@ -1,29 +1,33 @@
-name: Build Moonlight Plus
+name: Build test IPA
 
 on:
-  push:
-    branches: [ "master", "main" ]
   workflow_dispatch:
-  release:
-    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-ipa-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: macos-14
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           submodules: recursive
+          persist-credentials: false
 
-      - name: Force Xcode 16.2 only
-        run: |
-          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
-          sudo rm -rf /Applications/Xcode.app
+      - name: Select Xcode 16.2
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
 
-      - name: Build app
+      - name: Build unsigned app
         run: |
+          set -o pipefail
           xcodebuild \
             -project Moonlight.xcodeproj \
             -scheme Moonlight \
@@ -34,35 +38,21 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            -archivePath $PWD/build/Moonlight.xcarchive \
+            -archivePath "$PWD/build/Moonlight.xcarchive" \
             archive \
             2>&1 | tee build_log.txt
-          exit ${PIPESTATUS[0]}
 
       - name: Package IPA
         run: |
-          mkdir -p Payload
-          cp -r build/Moonlight.xcarchive/Products/Applications/Moonlight.app Payload/
-          zip -r MoonlightPlus.ipa Payload
-          ls -lh MoonlightPlus.ipa
+          mkdir Payload
+          cp -R build/Moonlight.xcarchive/Products/Applications/Moonlight.app Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload MoonlightPointerTest.ipa
+          shasum -a 256 MoonlightPointerTest.ipa
 
-      - name: Upload IPA as artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload IPA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: MoonlightPlus-IPA
-          path: MoonlightPlus.ipa
-
-      - name: Upload IPA to Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: MoonlightPlus.ipa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload build log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build_log.txt
+          name: MoonlightPointerTest-IPA
+          path: MoonlightPointerTest.ipa
+          if-no-files-found: error
+          retention-days: 14
