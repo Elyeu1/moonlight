@@ -45,8 +45,6 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     CALayer *oldLayer = displayLayer;
     
     displayLayer = [[AVSampleBufferDisplayLayer alloc] init];
-    // Minimize buffering for lowest latency
-    displayLayer.controlTimebase = nil;
     displayLayer.backgroundColor = [UIColor blackColor].CGColor;
     
     // Ensure the AVSampleBufferDisplayLayer is sized to preserve the aspect ratio
@@ -63,11 +61,6 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     displayLayer.position = CGPointMake(CGRectGetMidX(_view.bounds), CGRectGetMidY(_view.bounds));
     displayLayer.bounds = CGRectMake(0, 0, videoSize.width, videoSize.height);
     displayLayer.videoGravity = AVLayerVideoGravityResize;
-
-    // Request immediate rendering - reduces latency by 1-2 frames
-    if (@available(iOS 14.0, *)) {
-    displayLayer.preventsDisplaySleepDuringVideoPlayback = NO;
-    }
 
     // Hide the layer until we get an IDR frame. This ensures we
     // can see the loading progress label as the stream is starting.
@@ -122,9 +115,7 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     else {
         _displayLink.preferredFramesPerSecond = self->frameRate;
     }
-    // Add to tracking mode too for lower latency during scrolling/interaction
     [_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
-    [_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:UITrackingRunLoopMode];
 }
 
 // TODO: Refactor this
@@ -145,12 +136,6 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
                     break;
                 }
             }
-        }
-        
-        // Drain all pending frames immediately when not using frame pacing
-        // This reduces latency by not waiting for next display refresh
-        if (!framePacing && LiGetPendingVideoFrames() == 0) {
-            break;
         }
     }
 }
