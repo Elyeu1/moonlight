@@ -92,30 +92,6 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // events if a GCMouse is connected.
     if (@available(iOS 13.4, *)) {
         [self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
-        
-if (@available(iOS 14.0, *)) {
-    void (^setupMouseHandler)(GCMouse*) = ^(GCMouse *mouse) {
-        mouse.mouseInput.mouseMovedHandler = ^(GCMouseInput *input,
-                                               float deltaX, float deltaY) {
-dispatch_async(dispatch_get_main_queue(), ^{
-                LiSendMouseMoveEvent((short)deltaX, (short)-deltaY);
-            });
-        };
-    };
-    
-    if ([GCMouse current] != nil) {
-        setupMouseHandler([GCMouse current]);
-    }
-    
-    [[NSNotificationCenter defaultCenter]
-        addObserverForName:GCMouseDidConnectNotification
-        object:nil
-        queue:[NSOperationQueue mainQueue]
-        usingBlock:^(NSNotification *note) {
-            setupMouseHandler((GCMouse *)note.object);
-        }];
-}
-        
         UIPanGestureRecognizer *discreteMouseWheelRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(mouseWheelMovedDiscrete:)];
         discreteMouseWheelRecognizer.maximumNumberOfTouches = 0;
         discreteMouseWheelRecognizer.allowedScrollTypesMask = UIScrollTypeMaskDiscrete;

@@ -275,6 +275,7 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
     UIScrollView *_scrollView;
     BOOL _userIsInteracting;
     CGSize _keyboardSize;
+    BOOL _streamViewActive;
     
 #if !TARGET_OS_TV
     UIScreenEdgePanGestureRecognizer *_exitSwipeRecognizer;
@@ -450,17 +451,23 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
 - (void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
+    _streamViewActive = YES;
     
 #if !TARGET_OS_TV
     [[self revealViewController] setPrimaryViewController:self];
     
     if (@available(iOS 14.0, *)) {
-        // Force this view controller to become key window
+        // Pointer locking must not depend exclusively on GCMouse. Some iPhone
+        // trackpads are exposed by UIKit as indirect pointer devices instead.
+        // Keep the stream window and view active, then ask iOS to reevaluate
+        // pointer capture now and once more after the transition completes.
         [self.view.window makeKeyAndVisible];
+        [self->_streamView becomeFirstResponder];
         [self setNeedsUpdateOfPrefersPointerLocked];
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self.view.window makeKeyAndVisible];
+            [self->_streamView becomeFirstResponder];
             [self setNeedsUpdateOfPrefersPointerLocked];
         });
     }
@@ -603,6 +610,14 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
         [_inactivityTimer invalidate];
         _inactivityTimer = nil;
     }
+
+#if !TARGET_OS_TV
+    if (@available(iOS 14.0, *)) {
+        [self.view.window makeKeyAndVisible];
+        [_streamView becomeFirstResponder];
+        [self setNeedsUpdateOfPrefersPointerLocked];
+    }
+#endif
 }
 
 // This fires when the home button is pressed
@@ -980,12 +995,10 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
 
 - (BOOL)prefersPointerLocked {
     if (@available(iOS 14.0, *)) {
-        for (GCMouse *mouse in [GCMouse mice]) {
-            if (mouse.mouseInput != nil) {
-                return YES;
-            }
-        }
-        return [GCMouse current] != nil;
+        // iPhone may expose keyboard trackpads through UIKit without adding a
+        // GCMouse instance. Request capture for every active stream and let iOS
+        // apply it when an indirect pointer is present.
+        return _streamViewActive && self.viewIfLoaded.window != nil;
     }
     return NO;
 }
@@ -993,6 +1006,12 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
 #endif
 
 - (void)viewWillDisappear:(BOOL)animated {
+    _streamViewActive = NO;
+#if !TARGET_OS_TV
+    if (@available(iOS 14.0, *)) {
+        [self setNeedsUpdateOfPrefersPointerLocked];
+    }
+#endif
     [super viewWillDisappear:animated];
     [[self.view viewWithTag:8888] removeFromSuperview];
     [[ExternalDisplayManager shared] stopMonitoring];
