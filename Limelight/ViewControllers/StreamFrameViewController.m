@@ -26,6 +26,44 @@
 #endif
 
 
+// ---- Touchpad Mode blackout ----
+// When the stream is mirrored to an external display and the user asked for the
+// phone screen to go dark, the stream view is covered with an opaque layer. The
+// layer must never take touches: the view underneath is still the trackpad
+// surface and still owns the three finger keyboard gesture. The software
+// keyboard lives in its own window, so it stays visible above the blackout.
+static const NSInteger kTouchpadBlackoutTag = 8888;
+static NSString * const kTouchpadModeShouldUpdateNotification = @"MoonlightTouchpadModeShouldUpdate";
+
+#if !TARGET_OS_TV
+static void ShowTouchpadBlackout(UIView *targetView) {
+    if (targetView == nil || [targetView viewWithTag:kTouchpadBlackoutTag] != nil) {
+        return;
+    }
+
+    UIView *blackout = [[UIView alloc] initWithFrame:targetView.bounds];
+    blackout.backgroundColor = [UIColor blackColor];
+    blackout.tag = kTouchpadBlackoutTag;
+    blackout.userInteractionEnabled = NO;
+    blackout.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    [targetView addSubview:blackout];
+    [targetView bringSubviewToFront:blackout];
+}
+#endif
+
+static void HideTouchpadBlackout(void) {
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                [[window viewWithTag:kTouchpadBlackoutTag] removeFromSuperview];
+            }
+        }
+    }
+}
+// ---- End Touchpad Mode blackout ----
+
+
 // ---- External Display Manager ----
 @interface ExternalDisplayManager : NSObject
 + (instancetype)shared;
@@ -59,62 +97,10 @@
             self->_spinner.hidden = YES;
             self->_waitLabel.hidden = YES;
             
-            // Show black overlay on iPhone if setting enabled
-            BOOL turnOff = [[NSUserDefaults standardUserDefaults] 
-                            boolForKey:@"turnOffScreenOnMonitor"];
-            if (turnOff) {
-                // Find the stream view controller's view directly
-                UIViewController *streamVC = nil;
-                for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-                    if ([scene isKindOfClass:[UIWindowScene class]]) {
-                        UIWindowScene *ws = (UIWindowScene *)scene;
-                        for (UIWindow *w in ws.windows) {
-                            if ([w.rootViewController.presentedViewController isKindOfClass:[UINavigationController class]]) {
-                                UINavigationController *nav = (UINavigationController *)w.rootViewController.presentedViewController;
-                                streamVC = nav.visibleViewController;
-                            } else if ([w.rootViewController isKindOfClass:[UINavigationController class]]) {
-                                UINavigationController *nav = (UINavigationController *)w.rootViewController;
-                                streamVC = nav.visibleViewController;
-                            }
-                        }
-                    }
-                }
-                
-                // Add black overlay directly to stream VC view
-                UIView *targetView = streamVC ? streamVC.view : nil;
-                if (targetView && [targetView viewWithTag:8888] == nil) {
-                    UIView *blackout = [[UIView alloc] initWithFrame:targetView.bounds];
-                    blackout.backgroundColor = [UIColor blackColor];
-                    blackout.tag = 8888;
-                    blackout.userInteractionEnabled = NO;
-                    blackout.autoresizingMask = 
-                        UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-                    
-                    // Add "Touchpad Mode" label
-                    UILabel *label = [[UILabel alloc] init];
-                    label.text = @"Touchpad Mode";
-                    label.textColor = [UIColor colorWithWhite:1.0 alpha:0.3];
-                    label.font = [UIFont systemFontOfSize:16 weight:UIFontWeightLight];
-                    label.translatesAutoresizingMaskIntoConstraints = NO;
-                    [blackout addSubview:label];
-                    
-                    UILabel *sublabel = [[UILabel alloc] init];
-                    sublabel.text = @"Stream active on monitor";
-                    sublabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.15];
-                    sublabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightLight];
-                    sublabel.translatesAutoresizingMaskIntoConstraints = NO;
-                    [blackout addSubview:sublabel];
-                    
-                    [NSLayoutConstraint activateConstraints:@[
-                        [label.centerXAnchor constraintEqualToAnchor:blackout.centerXAnchor],
-                        [label.centerYAnchor constraintEqualToAnchor:blackout.centerYAnchor],
-                        [sublabel.centerXAnchor constraintEqualToAnchor:blackout.centerXAnchor],
-                        [sublabel.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:8],
-                    ]];
-                    
-                    [targetView addSubview:blackout];
-                }
-            }
+            // Video is live on the monitor now, so the phone screen is free to
+            // go dark. The stream view controller owns that decision.
+            [[NSNotificationCenter defaultCenter]
+                postNotificationName:kTouchpadModeShouldUpdateNotification object:nil];
         });
     }
 }
@@ -143,15 +129,7 @@
         [_renderer setExternalDisplayLayer:nil];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Remove black overlay
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:[UIWindowScene class]]) {
-                UIWindowScene *ws = (UIWindowScene *)scene;
-                for (UIWindow *w in ws.windows) {
-                    [[w viewWithTag:8888] removeFromSuperview];
-                }
-            }
-        }
+        HideTouchpadBlackout();
         self->_externalWindow.hidden = YES;
         self->_externalWindow = nil;
         self->_externalLayer = nil;
@@ -170,6 +148,10 @@
         [_renderer setExternalDisplayLayer:nil];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
+        // Without the monitor there is nothing left to look at but the phone,
+        // so Touchpad Mode has to end even though the stream continues.
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:kTouchpadModeShouldUpdateNotification object:nil];
         self->_externalWindow.hidden = YES;
         self->_externalWindow = nil;
         self->_externalLayer = nil;
@@ -276,6 +258,7 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
     BOOL _userIsInteracting;
     CGSize _keyboardSize;
     BOOL _streamViewActive;
+    BOOL _connectionActive;
     
 #if !TARGET_OS_TV
     UIScreenEdgePanGestureRecognizer *_exitSwipeRecognizer;
@@ -409,6 +392,25 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
                                                  name: UIApplicationDidEnterBackgroundNotification
                                                object: nil];
 
+#if !TARGET_OS_TV
+    // Touchpad Mode has to follow the monitor being plugged in or pulled out
+    // mid-stream, not just the state at connection time.
+    [[NSNotificationCenter defaultCenter] addObserver: self
+                                             selector: @selector(updateTouchpadMode)
+                                                 name: kTouchpadModeShouldUpdateNotification
+                                               object: nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver: self
+                                             selector: @selector(updateTouchpadMode)
+                                                 name: UIScreenDidConnectNotification
+                                               object: nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver: self
+                                             selector: @selector(updateTouchpadMode)
+                                                 name: UIScreenDidDisconnectNotification
+                                               object: nil];
+#endif
+
 #if 0
     // FIXME: This doesn't work reliably on iPad for some reason. Showing and hiding the keyboard
     // several times in a row will not correctly restore the state of the UIScrollView.
@@ -461,16 +463,14 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
         // trackpads are exposed by UIKit as indirect pointer devices instead.
         // Keep the stream window and view active, then ask iOS to reevaluate
         // pointer capture now and once more after the transition completes.
-        [self.view.window makeKeyAndVisible];
-        [self->_streamView becomeFirstResponder];
-        [self setNeedsUpdateOfPrefersPointerLocked];
+        [self reclaimPointerCapture];
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self.view.window makeKeyAndVisible];
-            [self->_streamView becomeFirstResponder];
-            [self setNeedsUpdateOfPrefersPointerLocked];
+            [self reclaimPointerCapture];
         });
     }
+
+    [self updateTouchpadMode];
 #endif
 }
 
@@ -613,9 +613,7 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
 
 #if !TARGET_OS_TV
     if (@available(iOS 14.0, *)) {
-        [self.view.window makeKeyAndVisible];
-        [_streamView becomeFirstResponder];
-        [self setNeedsUpdateOfPrefersPointerLocked];
+        [self reclaimPointerCapture];
     }
 #endif
 }
@@ -647,44 +645,10 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
         [self->_streamView showOnScreenControls];
         [self->_controllerSupport connectionEstablished];
         
-        // Show black overlay on iPhone if monitor connected and setting enabled
-        BOOL turnOff = [[NSUserDefaults standardUserDefaults]
-                        boolForKey:@"turnOffScreenOnMonitor"];
-        if (turnOff && UIScreen.screens.count > 1) {
-            if ([self.view viewWithTag:8888] == nil) {
-                UIView *blackout = [[UIView alloc] initWithFrame:self.view.bounds];
-                blackout.backgroundColor = [UIColor blackColor];
-                blackout.tag = 8888;
-                blackout.userInteractionEnabled = NO;
-                blackout.autoresizingMask =
-                    UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-                
-                UILabel *label = [[UILabel alloc] init];
-                label.text = @"Touchpad Mode";
-                label.textColor = [UIColor colorWithWhite:1.0 alpha:0.3];
-                label.font = [UIFont systemFontOfSize:16 weight:UIFontWeightLight];
-                label.translatesAutoresizingMaskIntoConstraints = NO;
-                [blackout addSubview:label];
-                
-                UILabel *sublabel = [[UILabel alloc] init];
-                sublabel.text = @"Stream active on monitor";
-                sublabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.15];
-                sublabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightLight];
-                sublabel.translatesAutoresizingMaskIntoConstraints = NO;
-                [blackout addSubview:sublabel];
-                
-                [NSLayoutConstraint activateConstraints:@[
-                    [label.centerXAnchor constraintEqualToAnchor:blackout.centerXAnchor],
-                    [label.centerYAnchor constraintEqualToAnchor:blackout.centerYAnchor],
-                    [sublabel.centerXAnchor constraintEqualToAnchor:blackout.centerXAnchor],
-                    [sublabel.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:8],
-                ]];
-                
-                // Add on top of everything
-                [self.view addSubview:blackout];
-                [self.view bringSubviewToFront:blackout];
-            }
-        }
+        self->_connectionActive = YES;
+#if !TARGET_OS_TV
+        [self updateTouchpadMode];
+#endif
         
         if (self->_settings.statsOverlay) {
             self->_statsUpdateTimer = [NSTimer scheduledTimerWithTimeInterval:1.0f
@@ -993,6 +957,45 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
     return YES;
 }
 
+// Re-assert pointer capture without stealing first responder from the software
+// keyboard. The three finger gesture puts the keyboard's hidden text field in
+// charge of input, and taking that back here would close the keyboard.
+- (void)reclaimPointerCapture {
+    if (@available(iOS 14.0, *)) {
+        [self.view.window makeKeyAndVisible];
+        if (![_streamView isTextInputActive]) {
+            [_streamView becomeFirstResponder];
+        }
+        [self setNeedsUpdateOfPrefersPointerLocked];
+    }
+}
+
+// Touchpad Mode: stream running on an external display, phone screen blacked
+// out, phone still fully usable as a trackpad. The blackout takes no touches
+// and the on-screen controls are parked, so the touch handler and the three
+// finger keyboard gesture keep working underneath it. The software keyboard is
+// in its own window and therefore still visible on top of the blackout.
+- (void)updateTouchpadMode {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self updateTouchpadMode]; });
+        return;
+    }
+
+    BOOL turnOffScreen = [[NSUserDefaults standardUserDefaults]
+                          boolForKey:@"turnOffScreenOnMonitor"];
+    BOOL active = turnOffScreen && _connectionActive && _streamViewActive &&
+                  UIScreen.screens.count > 1;
+
+    if (active) {
+        ShowTouchpadBlackout(self.view);
+    }
+    else {
+        HideTouchpadBlackout();
+    }
+
+    [_streamView setTouchpadModeActive:active];
+}
+
 - (BOOL)prefersPointerLocked {
     if (@available(iOS 14.0, *)) {
         // iPhone may expose keyboard trackpads through UIKit without adding a
@@ -1007,13 +1010,14 @@ vc.view.frame = CGRectMake(0, 0, screen.bounds.size.width, screen.bounds.size.he
 
 - (void)viewWillDisappear:(BOOL)animated {
     _streamViewActive = NO;
+    _connectionActive = NO;
 #if !TARGET_OS_TV
     if (@available(iOS 14.0, *)) {
         [self setNeedsUpdateOfPrefersPointerLocked];
     }
+    [self updateTouchpadMode];
 #endif
     [super viewWillDisappear:animated];
-    [[self.view viewWithTag:8888] removeFromSuperview];
     [[ExternalDisplayManager shared] stopMonitoring];
 }
 

@@ -49,6 +49,11 @@ static BOOL UseStandaloneIPhoneAbsoluteMouse(void) {
     BOOL hasUserInteracted;
     
     NSDictionary<NSString *, NSNumber *> *dictCodes;
+
+    // Touchpad Mode: stream is on an external display and the phone screen is
+    // blacked out, so this view is nothing but a trackpad surface.
+    BOOL touchpadModeActive;
+    OnScreenControlsLevel oscLevelBeforeTouchpadMode;
 }
 
 - (void) setupStreamView:(ControllerSupport*)controllerSupport
@@ -175,6 +180,33 @@ static BOOL UseStandaloneIPhoneAbsoluteMouse(void) {
         return [onScreenControls getLevel];
     }
 }
+
+- (BOOL) isTextInputActive {
+    return isInputingText;
+}
+
+#if !TARGET_OS_TV
+// In Touchpad Mode the on-screen controls are still laid out underneath the
+// blackout where the user can't see them, and they consume touches before the
+// touch handler and the three finger keyboard gesture ever see them. Park them
+// for the duration and restore the configured level afterwards.
+- (void) setTouchpadModeActive:(BOOL)active {
+    if (onScreenControls == nil || active == touchpadModeActive) {
+        return;
+    }
+
+    touchpadModeActive = active;
+
+    if (active) {
+        oscLevelBeforeTouchpadMode = [onScreenControls getLevel];
+        [onScreenControls setLevel:OnScreenControlsLevelOff];
+    }
+    else {
+        [onScreenControls setLevel:oscLevelBeforeTouchpadMode];
+        [onScreenControls show];
+    }
+}
+#endif
 
 - (CGSize) getVideoAreaSize {
     if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {

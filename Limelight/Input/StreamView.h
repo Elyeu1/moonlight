@@ -29,9 +29,11 @@
                   config:(StreamConfiguration*)streamConfig;
 - (void) showOnScreenControls;
 - (OnScreenControlsLevel) getCurrentOscState;
+- (BOOL) isTextInputActive;
 
 #if !TARGET_OS_TV
 - (void) updateCursorLocation:(CGPoint)location isMouse:(BOOL)isMouse;
+- (void) setTouchpadModeActive:(BOOL)active;
 #endif
 
 @end
