@@ -11,6 +11,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -23,3 +24,4 @@ jobs:
         env:
           ANTHROPIC_BASE_URL: https://openrouter.ai/api
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ""
