@@ -1,4 +1,3 @@
-```yaml
 name: Claude Code Analysis
 
 on:
@@ -30,18 +29,17 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.OPENROUTER_API_KEY }}
-
           display_report: true
 
           prompt: |
             ANALYSIS ONLY.
 
             Work exclusively with the current contents of the
-            `iphone-pointer-capture` branch.
+            iphone-pointer-capture branch.
 
             IMPORTANT:
-            - `iphone-pointer-capture` is the ONLY source of truth.
-            - Do NOT use `master` as the codebase.
+            - iphone-pointer-capture is the ONLY source of truth.
+            - Do NOT use master as the codebase.
             - Do NOT modify any files.
             - Do NOT create commits.
             - Do NOT create branches.
@@ -73,4 +71,3 @@ jobs:
           ANTHROPIC_BASE_URL: https://openrouter.ai/api
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ""
-```
