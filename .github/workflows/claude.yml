@@ -1,10 +1,11 @@
-name: Claude Code
+```yaml
+name: Claude Code Analysis
 
 on:
   workflow_dispatch:
     inputs:
       prompt:
-        description: "Was soll Claude erledigen?"
+        description: "Was soll Claude analysieren?"
         required: true
         type: string
 
@@ -13,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
+      issues: read
       id-token: write
 
     steps:
@@ -30,33 +31,46 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 
-          base_branch: iphone-pointer-capture
-          branch_prefix: claude/
+          display_report: true
 
           prompt: |
-            You are working exclusively on the `iphone-pointer-capture` branch.
+            ANALYSIS ONLY.
+
+            Work exclusively with the current contents of the
+            `iphone-pointer-capture` branch.
 
             IMPORTANT:
-            - Treat `iphone-pointer-capture` as the ONLY source of truth.
-            - Do NOT use `master` as the codebase or starting point.
-            - Do NOT reset, overwrite, merge, rebase, or modify `master`.
-            - Do NOT assume that `master` contains the current implementation.
-            - The `iphone-pointer-capture` branch contains intentional changes
-              that may differ substantially from `master`.
-            - Analyze the actual files currently present in `iphone-pointer-capture`
-              before making any changes.
-            - Preserve existing functionality unless the requested task requires
-              changing it.
-            - Create a separate Claude branch based on `iphone-pointer-capture`.
-            - Make the requested changes on that branch.
-            - Commit the changes.
-            - Create a Pull Request targeting `iphone-pointer-capture`.
+            - `iphone-pointer-capture` is the ONLY source of truth.
+            - Do NOT use `master` as the codebase.
+            - Do NOT modify any files.
+            - Do NOT create commits.
+            - Do NOT create branches.
+            - Do NOT create or modify pull requests.
+            - Do NOT push anything.
+            - Do NOT attempt to fix anything.
+            - Only inspect and analyze the existing code.
+
+            Analyze the repository and answer the user's request in detail.
+
+            Explain:
+            1. What the relevant code currently does.
+            2. What is implemented well.
+            3. What problems, bugs, risks or architectural issues you see.
+            4. What could cause the described behavior.
+            5. What concrete changes you would recommend.
+            6. Why you would make each recommended change.
+            7. What possible side effects the changes could have.
+
+            Do not make any changes to the repository.
 
             User request:
-
             ${{ inputs.prompt }}
+
+          claude_args: |
+            --disallowedTools "Edit,Write"
 
         env:
           ANTHROPIC_BASE_URL: https://openrouter.ai/api
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ""
+```
